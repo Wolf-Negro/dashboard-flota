@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ARI CLARO | Alucinando Agency</title>
+    <title>FLOTA DASHBOARD | Alucinando Agency</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Outfit -->
@@ -30,7 +30,7 @@
             </div>
             <div class="w-[1px] h-4 bg-slate-200"></div>
             <div class="h-5">
-                <img src="{{ url_for('static', filename='img/ari_logo_dark.png') }}" alt="Ari Claro" class="h-full object-contain opacity-90">
+                <img src="{{ url_for('static', filename='img/flota_logo.png') }}" alt="Flota" class="h-full object-contain opacity-90">
             </div>
         </div>
         <button id="mobile-menu-toggle" class="p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
@@ -52,7 +52,7 @@
                     </div>
                     <div class="flex flex-col gap-1">
                         <div class="h-6">
-                            <img src="{{ url_for('static', filename='img/ari_logo.png') }}" alt="Ari Claro" class="h-full object-contain">
+                            <img src="{{ url_for('static', filename='img/flota_logo.png') }}" alt="Flota" class="h-full object-contain">
                         </div>
                         <span class="text-[10px] text-violet-300 uppercase tracking-[0.2em] font-semibold">Dashboard</span>
                     </div>
@@ -64,12 +64,16 @@
                         <span class="font-medium">Dashboard</span>
                     </button>
                     <button data-section="metrics" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 text-violet-200/60 hover:text-white hover:bg-white/5">
-                        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                        <i data-lucide="calendar" class="w-5 h-5"></i>
                         <span class="font-medium">Métricas Diarias</span>
+                    </button>
+                    <button data-section="campaigns" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 text-violet-200/60 hover:text-white hover:bg-white/5">
+                        <i data-lucide="layers" class="w-5 h-5"></i>
+                        <span class="font-medium">Campañas</span>
                     </button>
                     <button data-section="leads" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 text-violet-200/60 hover:text-white hover:bg-white/5">
                         <i data-lucide="users" class="w-5 h-5"></i>
-                        <span class="font-medium">Leads</span>
+                        <span class="font-medium">Leads / Mensajes</span>
                     </button>
                 </nav>
 

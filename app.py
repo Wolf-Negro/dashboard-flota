@@ -1,10 +1,13 @@
 import os
 from flask import Flask, render_template, jsonify, request
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import calendar
 from dotenv import load_dotenv
+import json
+import traceback
+import time
 
 # Cargar variables de entorno
 load_dotenv()
@@ -13,261 +16,338 @@ app = Flask(__name__)
 
 # Configuración de Meta Ads
 ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN')
-# Soporte para múltiples cuentas
-AD_ACCOUNT_IDS = [
-    os.environ.get('AD_ACCOUNT_ID_1'),
-    os.environ.get('AD_ACCOUNT_ID_2')
-]
-# Limpiar nulos o vacíos
-AD_ACCOUNT_IDS = [acc for acc in AD_ACCOUNT_IDS if acc]
-
-MONTHLY_BUDGET = float(os.environ.get('MONTHLY_BUDGET', 12000))
-CLIENT_NAME = os.environ.get('CLIENT_NAME', 'ARI CLARO')
+AD_ACCOUNT_ID = os.environ.get('AD_ACCOUNT_ID', 'act_1184698167137626')
+MONTHLY_BUDGET = float(os.environ.get('MONTHLY_BUDGET', 2000))
+CLIENT_NAME = os.environ.get('CLIENT_NAME', 'ALUCINANDO DASHBOARD')
 CURRENCY = os.environ.get('CURRENCY', 'PEN')
 
 PERU_TZ = pytz.timezone('America/Lima')
 
+# Simple Cache en memoria
+CACHE = {}
+CACHE_EXPIRY = 300 # 5 minutos
+
 def get_peru_now():
-    """Retorna datetime actual en America/Lima."""
     return datetime.now(PERU_TZ)
 
-def process_meta_data(data):
-    """Procesa insights de Meta y devuelve un array formateado (newest first)."""
-    processed = []
-    # Agrupar por fecha ya que podemos tener múltiples cuentas
-    by_date = {}
+def classify_campaign(name, action_types):
+    name = name.lower()
+    # Listas de keywords
+    msg_keys = ["mensaje", "mensajes", "whatsapp", "wsp", "conv"]
+    lead_keys = ["lead", "leads", "cliente potencial"]
+    pos_keys = ["posiciona", "posciona", "video", "reproduccion", "reach", "alcance", "frio", "thruplay"]
     
-    for day_entry in data:
-        date_str = day_entry.get('date_start')
-        spend = float(day_entry.get('spend', 0.0))
-        leads = 0
-        visits = 0
-        actions = day_entry.get('actions', [])
-        for action in actions:
-            # Capturar solo la métrica principal de "lead" (Clientes potenciales)
-            if action['action_type'] == 'lead':
-                leads += int(action['value'])
-            # NUEVO: Capturar visitas a la página (Landing Page Views)
-            if action['action_type'] == 'landing_page_view':
-                visits += int(action['value'])
-        
-        ctr = float(day_entry.get('unique_inline_link_click_ctr', day_entry.get('inline_link_click_ctr', 0.0)))
-        reach = int(day_entry.get('reach', 0))
-        impressions = int(day_entry.get('impressions', 0))
-        clicks = int(day_entry.get('clicks', 0))
-        
-        if date_str not in by_date:
-            by_date[date_str] = {
-                "spend": 0.0,
-                "leads": 0,
-                "visits": 0,
-                "ctr_sum": 0.0,
-                "ctr_count": 0,
-                "reach": 0,
-                "impressions": 0,
-                "clicks": 0
-            }
-        
-        by_date[date_str]["spend"] += spend
-        by_date[date_str]["leads"] += leads
-        by_date[date_str]["visits"] += visits
-        by_date[date_str]["ctr_sum"] += ctr
-        by_date[date_str]["ctr_count"] += 1
-        by_date[date_str]["reach"] += reach
-        by_date[date_str]["impressions"] += impressions
-        by_date[date_str]["clicks"] += clicks
+    # Action types
+    msg_actions = [
+        'onsite_conversion.messaging_conversation_started_7d',
+        'messaging_conversation_started_7d',
+        'messaging_first_reply'
+    ]
+    lead_actions = [
+        'lead',
+        'onsite_conversion.lead_grouped',
+        'offsite_conversion.fb_pixel_lead',
+        'leadgen_grouped'
+    ]
+    pos_actions = [
+        'video_view', 'thruplay', 'video_thruplay_watched_actions', 'post_engagement'
+    ]
 
-    # Convertir a lista y formatear
-    for date_str, values in by_date.items():
-        dt_obj = datetime.strptime(date_str, '%Y-%m-%d')
-        display_date = dt_obj.strftime('%d %b')
-        
-        spend = values["spend"]
-        leads = values["leads"]
-        visits = values["visits"]
-        reach = values["reach"]
-        impressions = values["impressions"]
-        clicks = values["clicks"]
-        avg_ctr = values["ctr_sum"] / values["ctr_count"] if values["ctr_count"] > 0 else 0.0
-        
-        processed.append({
-            "date": display_date,
-            "date_raw": date_str,
-            "spend": spend,
-            "leads": leads,
-            "visits": visits,
-            "reach": reach,
-            "impressions": impressions,
-            "clicks": clicks,
-            "cpl": round(spend / leads, 2) if leads > 0 else 0.0,
-            "ctr": round(avg_ctr, 2)
-        })
+    # 1. Clasificación por acciones (más precisa)
+    if any(a in action_types for a in lead_actions):
+        return 'Leads'
+    if any(a in action_types for a in msg_actions):
+        return 'Mensajes'
+    if any(a in action_types for a in pos_actions):
+        return 'Posicionamiento'
+
+    # 2. Clasificación por nombre (Prioridad a Posicionamiento si hay conflicto)
+    if any(k in name for k in pos_keys):
+        return 'Posicionamiento'
+    if any(k in name for k in lead_keys):
+        return 'Leads'
+    if any(k in name for k in msg_keys) or "remarketing" in name:
+        return 'Mensajes'
     
-    # Ordenar por fecha antes de devolver
-    processed.sort(key=lambda x: x['date_raw'])
-    return processed
+    return 'Posicionamiento'
+
+def get_action_value(actions, types):
+    return sum(int(a.get('value', 0)) for a in actions if a.get('action_type') in types)
 
 @app.route('/')
 def index():
     return render_template('index.html', client_name=CLIENT_NAME)
 
 @app.route('/api/data')
-def get_data():
+def get_dashboard_data():
     month = request.args.get('month')
     now = get_peru_now()
     today_str = now.strftime('%Y-%m-%d')
     
     if not month:
-        month = today_str[:7]
-    
+        month = today_str[:7] # YYYY-MM
+
+    # Verificar Cache
+    cache_key = f"dashboard_{month}"
+    if cache_key in CACHE:
+        data, timestamp = CACHE[cache_key]
+        if time.time() - timestamp < CACHE_EXPIRY:
+            print(f"DEBUG: Sirviendo data desde cache para {month}")
+            return jsonify(data)
+
     try:
         year, month_num = map(int, month.split('-'))
         ultimo_dia = calendar.monthrange(year, month_num)[1]
         since_date = f"{year}-{month_num:02d}-01"
         until_date = f"{year}-{month_num:02d}-{ultimo_dia}"
-    except:
-        now = get_peru_now()
-        since_date = now.strftime('%Y-%m-01')
-        until_date = now.strftime('%Y-%m-31')
-        ultimo_dia = 30
+        
+        # Si es el mes actual, no podemos pedir el futuro
+        if month == today_str[:7]:
+            until_date = today_str
 
-    import json
-    all_raw_data = []
-    
-    for account_id in AD_ACCOUNT_IDS:
-        url = f"https://graph.facebook.com/v19.0/{account_id}/insights"
-        params = {
+        print(f"DEBUG: Fetching data for {since_date} to {until_date}")
+
+        url_insights = f"https://graph.facebook.com/v19.0/{AD_ACCOUNT_ID}/insights"
+        
+        # 1. Insights por Campaña (Diario) - Para Gráficos y Tabla
+        params_camp = {
             'access_token': ACCESS_TOKEN,
-            'level': 'account',
-            'fields': 'spend,actions,unique_inline_link_click_ctr,inline_link_click_ctr,reach,impressions,clicks,date_start',
-            'time_increment': 1,
+            'level': 'campaign',
+            'fields': 'campaign_name,spend,actions,date_start,reach,impressions,clicks,inline_link_click_ctr,cpm,cpc,objective,video_thruplay_watched_actions',
             'time_range': json.dumps({"since": since_date, "until": until_date}),
-            'limit': '1000'
+            'time_increment': 1,
+            'limit': '5000'
         }
-        try:
-            response = requests.get(url, params=params, timeout=15)
-            response.raise_for_status()
-            res_json = response.json()
-            all_raw_data.extend(res_json.get('data', []))
-        except Exception as e:
-            print(f"Error fetching data for {account_id}: {e}")
+        
+        res_camp = requests.get(url_insights, params=params_camp, timeout=30).json()
+        camp_raw = res_camp.get('data', [])
+        
+        if 'error' in res_camp:
+            return jsonify({"status": "error", "message": res_camp['error'].get('message')})
 
+        # Procesamiento de Data Diaria
+        daily_map = {} # date -> metrics
+        campaign_map = {} # campaign_name -> total_metrics
+
+        msg_actions = ['onsite_conversion.messaging_conversation_started_7d', 'messaging_conversation_started_7d', 'messaging_first_reply']
+        lead_actions = ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'leadgen_grouped']
+        thruplay_actions = ['video_thruplay_watched_actions', 'thruplay', 'video_thruplay_watched', 'onsite_conversion.video_thruplay_watched_actions']
+
+        for entry in camp_raw:
+            ds = entry['date_start']
+            name = entry['campaign_name']
+            actions = entry.get('actions', [])
+            action_types = [a['action_type'] for a in actions]
+            stage = classify_campaign(name, action_types)
+            
+            spend = float(entry.get('spend', 0.0))
+            reach = int(entry.get('reach', 0))
+            clicks = int(entry.get('clicks', 0))
+            impressions = int(entry.get('impressions', 0))
+            
+            leads = get_action_value(actions, lead_actions)
+            messages = get_action_value(actions, msg_actions)
+            thruplays = get_action_value(actions, thruplay_actions)
+            
+            # Revisar si thruplay viene como campo separado (frecuente en v19.0+)
+            if 'video_thruplay_watched_actions' in entry:
+                thru_field = entry['video_thruplay_watched_actions']
+                if isinstance(thru_field, list):
+                    thruplays_extra = sum(int(a.get('value', 0)) for a in thru_field)
+                    thruplays = max(thruplays, thruplays_extra)
+            
+            # Inicializar mapa diario
+            if ds not in daily_map:
+                daily_map[ds] = {
+                    "date": ds,
+                    "messages": 0, "leads": 0,
+                    "msg_spend": 0.0, "lead_spend": 0.0,
+                    "total_spend": 0.0, "reach": 0, "clicks": 0, "impressions": 0, "interactions": 0
+                }
+            
+            d = daily_map[ds]
+            d["total_spend"] += spend
+            d["reach"] += reach
+            d["clicks"] += clicks
+            d["impressions"] += impressions
+            d["interactions"] += sum(int(a.get('value', 0)) for a in actions)
+            
+            if stage == 'Mensajes':
+                d["messages"] += messages
+                d["msg_spend"] += spend
+            elif stage == 'Leads':
+                d["leads"] += leads
+                d["lead_spend"] += spend
+
+            # Acumular para Tabla de Campañas
+            if name not in campaign_map:
+                campaign_map[name] = {
+                    "name": name, "objective": entry.get('objective'), "stage": stage,
+                    "spend": 0, "results": 0, "reach": 0, "clicks": 0, "impressions": 0,
+                    "ctr_sum": 0, "cpm_sum": 0, "count": 0
+                }
+            c = campaign_map[name]
+            c["spend"] += spend
+            
+            # Lógica de resultados por etapa
+            if stage == 'Mensajes':
+                c["results"] += messages
+            elif stage == 'Leads':
+                c["results"] += leads
+            else: # Posicionamiento
+                c["results"] += (thruplays if thruplays > 0 else reach)
+            c["reach"] += reach
+            c["clicks"] += clicks
+            c["impressions"] += impressions
+            c["ctr_sum"] += float(entry.get('inline_link_click_ctr', 0))
+            c["cpm_sum"] += float(entry.get('cpm', 0))
+            c["count"] += 1
+
+        # Convertir mapa a lista ordenada
+        sorted_dates = sorted(daily_map.keys())
+        daily_series = []
+        acc_messages = 0
+        acc_leads = 0
+        
+        for ds in sorted_dates:
+            d = daily_map[ds]
+            acc_messages += d["messages"]
+            acc_leads += d["leads"]
+            
+            dt_obj = datetime.strptime(ds, '%Y-%m-%d')
+            
+            daily_series.append({
+                "date": dt_obj.strftime('%d %b'),
+                "date_raw": ds,
+                "messages": d["messages"],
+                "leads": d["leads"],
+                "acc_messages": acc_messages,
+                "acc_leads": acc_leads,
+                "msg_spend": d["msg_spend"],
+                "lead_spend": d["lead_spend"],
+                "total_spend": d["total_spend"],
+                "cost_per_message": round(d["msg_spend"] / d["messages"], 2) if d["messages"] > 0 else 0,
+                "cost_per_lead": round(d["lead_spend"] / d["leads"], 2) if d["leads"] > 0 else 0,
+                "reach": d["reach"],
+                "clicks": d["clicks"],
+                "interactions": d["interactions"]
+            })
+
+        # Totales Mensuales
+        total_m_spend = sum(d["total_spend"] for d in daily_series)
+        total_m_messages = sum(d["messages"] for d in daily_series)
+        total_m_leads = sum(d["leads"] for d in daily_series)
+        total_m_reach = sum(d["reach"] for d in daily_series)
+        total_m_clicks = sum(d["clicks"] for d in daily_series)
+        total_m_interactions = sum(d["interactions"] for d in daily_series)
+        
+        # Campañas Procesadas
+        processed_campaigns = []
+        for name, c in campaign_map.items():
+            processed_campaigns.append({
+                "name": name,
+                "objective": c["objective"],
+                "stage": c["stage"],
+                "spend": round(c["spend"], 2),
+                "results": c["results"],
+                "result_type": c["stage"],
+                "cost_per_result": round(c["spend"] / c["results"], 2) if c["results"] > 0 else 0,
+                "ctr": round(c["ctr_sum"] / c["count"], 2) if c["count"] > 0 else 0,
+                "cpc": round(c["spend"] / c["clicks"], 2) if c["clicks"] > 0 else 0,
+                "cpm": round(c["cpm_sum"] / c["count"], 2) if c["count"] > 0 else 0
+            })
+
+        # Endpoint data final
+        output = {
+            "status": "success",
+            "kpis": {
+                "gastoTotal": round(total_m_spend, 2),
+                "leadsTotales": total_m_leads,
+                "mensajesTotales": total_m_messages,
+                "reachTotal": total_m_reach,
+                "clicksTotal": total_m_clicks,
+                "interactionsTotal": total_m_interactions,
+                "presupuestoTotal": MONTHLY_BUDGET,
+                "presupuestoRestante": round(max(0, MONTHLY_BUDGET - total_m_spend), 2),
+                "costoPorLead": round(sum(d["lead_spend"] for d in daily_series) / total_m_leads, 2) if total_m_leads > 0 else 0,
+                "costoPorMensaje": round(sum(d["msg_spend"] for d in daily_series) / total_m_messages, 2) if total_m_messages > 0 else 0
+            },
+            "daily_series": daily_series,
+            "campaigns": sorted(processed_campaigns, key=lambda x: x['spend'], reverse=True),
+            "monthDays": ultimo_dia
+        }
+
+        # Guardar en Cache
+        CACHE[cache_key] = (output, time.time())
+        
+        return jsonify(output)
+
+    except Exception as e:
+        print(traceback.format_exc())
+        return jsonify({"status": "error", "message": f"Dashboard Engine Failure: {str(e)}"})
+
+@app.route('/api/today')
+def get_today_metrics():
+    # Similar a get_dashboard_data pero solo hoy
+    now = get_peru_now()
+    hoy_ptr = now.strftime('%Y-%m-%d')
+    url = f"https://graph.facebook.com/v19.0/{AD_ACCOUNT_ID}/insights"
+    
+    params = {
+        'access_token': ACCESS_TOKEN,
+        'level': 'campaign',
+        'fields': 'campaign_name,spend,actions,reach,impressions,clicks,video_thruplay_watched_actions',
+        'time_range': json.dumps({"since": hoy_ptr, "until": hoy_ptr}),
+    }
+    
     try:
-        # Filtro de seguridad por mes
-        filtered_raw = [d for d in all_raw_data if d.get('date_start', '').startswith(month)]
-        processed_data = process_meta_data(filtered_raw)
-
-        # SIEMPRE Invertir: Lo más reciente primero para la tabla
-        display_data = list(reversed(processed_data))
-
-        total_spend = sum(d['spend'] for d in processed_data)
-        total_leads = sum(d['leads'] for d in processed_data)
-        total_visits = sum(d['visits'] for d in processed_data)
-        total_reach = sum(d['reach'] for d in processed_data)
-        total_impressions = sum(d['impressions'] for d in processed_data)
-        total_clicks = sum(d['clicks'] for d in processed_data)
+        res = requests.get(url, params=params, timeout=15).json()
+        data = res.get('data', [])
         
-        avg_cpl = round(total_spend / total_leads, 2) if total_leads > 0 else 0
-        
-        presupuesto_total = MONTHLY_BUDGET
-        presupuesto_consumido = round(total_spend, 2)
-        presupuesto_restante = round(max(0, presupuesto_total - presupuesto_consumido), 2)
+        msg_actions = ['onsite_conversion.messaging_conversation_started_7d', 'messaging_conversation_started_7d', 'messaging_first_reply']
+        lead_actions = ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'leadgen_grouped']
 
-        # LOGS DE AUDITORÍA SOLICITADOS POR EL USUARIO
-        print("\n--- AUDITORÍA DE DATA EN TIEMPO REAL ---")
-        print(f"Fecha Hoy (Servidor Lima): {today_str}")
-        print(f"Mes consultado: {month}")
-        print(f"Cuentas Activas: {len(AD_ACCOUNT_IDS)}")
-        print(f"Gasto Total Mes: S/. {total_spend:,.2f}")
-        print(f"Leads Totales Mes: {total_leads}")
-        print(f"CPL Promedio Mensual: S/. {avg_cpl:,.2f}")
-        
-        # Encontrar data de hoy si existe
-        today_data = next((d for d in processed_data if d['date_raw'] == today_str), None)
-        if today_data:
-            print(f"--- MÉTRICAS DE HOY ({today_str}) ---")
-            print(f"Gasto Hoy: S/. {today_data['spend']:.2f}")
-            print(f"Leads Hoy: {today_data['leads']}")
-            print(f"CPL Hoy: S/. {today_data['cpl']:.2f}")
-        else:
-            print(f"--- NO HAY DATA AÚN PARA HOY ({today_str}) ---")
-        print("----------------------------------------\n")
+        total_spend = 0
+        total_leads = 0
+        total_messages = 0
+        lead_spend = 0
+        msg_spend = 0
+        total_imp = 0
+        total_clicks = 0
+
+        for camp in data:
+            actions = camp.get('actions', [])
+            action_types = [a['action_type'] for a in actions]
+            stage = classify_campaign(camp['campaign_name'], action_types)
+            spend = float(camp.get('spend', 0))
+            imp = int(camp.get('impressions', 0))
+            clicks = int(camp.get('clicks', 0))
+            
+            total_spend += spend
+            total_imp += imp
+            total_clicks += clicks
+            
+            if stage == 'Leads':
+                total_leads += get_action_value(actions, lead_actions)
+                lead_spend += spend
+            elif stage == 'Mensajes':
+                total_messages += get_action_value(actions, msg_actions)
+                msg_spend += spend
 
         return jsonify({
             "status": "success",
-            "kpis": {
-                "gastoTotal": f"S/. {presupuesto_consumido:,.2f}",
-                "leadsTotales": total_leads,
-                "reachTotal": total_reach,
-                "impressionsTotal": total_impressions,
-                "clicksTotal": total_clicks,
-                "visitsTotal": total_visits,
-                "costoPorLeadPromedio": f"S/. {avg_cpl:,.2f}",
-                "presupuestoConsumido": presupuesto_consumido,
-                "presupuestoRestante": presupuesto_restante
-            },
-            "charts": {
-                "line": {
-                    "labels": [d["date"] for d in processed_data],
-                    "data": [d["cpl"] for d in processed_data]
-                },
-                "mixed": {
-                    "labels": [d["date"] for d in processed_data],
-                    "spend": [d["spend"] for d in processed_data],
-                    "leads": [d["leads"] for d in processed_data]
-                },
-                "doughnut": {
-                    "labels": ["Consumido", "Restante"],
-                    "data": [presupuesto_consumido, presupuesto_restante]
-                }
-            },
-            "dailyMetrics": display_data,
-            "monthDays": ultimo_dia
+            "data": {
+                "spend": round(total_spend, 2),
+                "leads": total_leads,
+                "messages": total_messages,
+                "cpl": round(lead_spend / total_leads, 2) if total_leads > 0 else 0,
+                "cpm": round(msg_spend / total_messages, 2) if total_messages > 0 else 0,
+                "ctr": round((total_clicks / total_imp * 100), 2) if total_imp > 0 else 0,
+                "cpm_avg": round((total_spend / (total_imp / 1000)), 2) if total_imp > 0 else 0
+            }
         })
-
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Sync Error: {str(e)}"})
-
-@app.route('/api/today')
-def get_today():
-    now = get_peru_now()
-    hoy_ptr = now.strftime('%Y-%m-%d')
-    
-    import json
-    all_raw_data = []
-    
-    for account_id in AD_ACCOUNT_IDS:
-        url = f"https://graph.facebook.com/v19.0/{account_id}/insights"
-        params = {
-            'access_token': ACCESS_TOKEN,
-            'level': 'account',
-            'fields': 'spend,actions,unique_inline_link_click_ctr,inline_link_click_ctr,date_start',
-            'time_range': json.dumps({"since": hoy_ptr, "until": hoy_ptr}),
-        }
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            all_raw_data.extend(response.json().get('data', []))
-        except Exception:
-            pass
-
-    try:
-        if not all_raw_data:
-            return jsonify({
-                "status": "success",
-                "data": {
-                    "date": now.strftime('%d %b'),
-                    "date_raw": now.strftime('%Y-%m-%d'),
-                    "spend": 0.0,
-                    "leads": 0,
-                    "cpl": 0.0,
-                    "ctr": 0.0
-                }
-            })
-            
-        processed = process_meta_data(all_raw_data)
-        return jsonify({"status": "success", "data": processed[0]})
-    except Exception:
+    except:
         return jsonify({"status": "error"})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5000)
