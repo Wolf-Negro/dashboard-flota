@@ -119,15 +119,14 @@ async function fetchTodayDelta() {
 
 function updateHoyUIMetrics(today) {
     const cards = document.querySelectorAll('h4.text-2xl');
-    if (cards.length >= 8) {
+    if (cards.length >= 7) {
         cards[0].innerText = formatCurrency(today.spend);
         cards[1].innerText = safeNumber(today.messages).toLocaleString();
         cards[2].innerText = safeNumber(today.leads).toLocaleString();
-        // cards[3] es presupuesto disponible (calculado con total mensual en renderDashboard)
-        cards[4].innerText = formatCurrency(today.cpm);
-        cards[5].innerText = formatCurrency(today.cpl);
-        cards[6].innerText = `${safeNumber(today.ctr).toFixed(2)}%`;
-        cards[7].innerText = formatCurrency(today.cpm_avg);
+        cards[3].innerText = formatCurrency(today.cpm);
+        cards[4].innerText = formatCurrency(today.cpl);
+        cards[5].innerText = `${safeNumber(today.ctr).toFixed(2)}%`;
+        cards[6].innerText = formatCurrency(today.cpm_avg);
     }
 }
 
@@ -205,7 +204,7 @@ function renderDashboard() {
     contentArea.innerHTML = `
         <div class="space-y-8 animate-in fade-in duration-500">
             <!-- 1. KPI CARDS HOY -->
-            <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
                     <div class="flex justify-between items-start mb-4">
                         <div class="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-violet-600/30">
@@ -236,35 +235,20 @@ function renderDashboard() {
                     <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Leads Hoy</p>
                     <h4 class="text-2xl font-black text-[#1E0B42] text-loading">...</h4>
                 </div>
-                <div class="bg-[#1E0B42] p-6 rounded-[2.5rem] shadow-xl shadow-violet-900/20 relative">
-                    <div class="flex justify-between items-start mb-4">
-                        <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-violet-300">
-                            <i data-lucide="wallet" class="w-6 h-6"></i>
-                        </div>
-                    </div>
-                    <p class="text-violet-300/50 text-[10px] font-bold uppercase tracking-widest mb-1">Presupuesto Disponible</p>
-                    <h4 class="text-2xl font-black text-white">${formatCurrency(available)}</h4>
-                </div>
-
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Costo/Mensaje Hoy</p>
-                    <h4 class="text-2xl font-black text-orange-500 text-loading">...</h4>
-                </div>
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Costo/Lead Hoy</p>
-                    <h4 class="text-2xl font-black text-blue-500 text-loading">...</h4>
-                </div>
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">CTR Promedio Hoy</p>
-                    <h4 class="text-2xl font-black text-slate-800 text-loading">...</h4>
-                </div>
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
-                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">CPM Promedio Hoy</p>
-                    <h4 class="text-2xl font-black text-slate-800 text-loading">...</h4>
-                </div>
             </section>
 
-            <!-- 2. GRÁFICOS PRINCIPALES -->
+            <!-- 2. EMBUDO PUBLICITARIO -->
+            <section class="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
+                <div class="flex items-center justify-between mb-10">
+                    <div>
+                        <h3 class="text-xl font-bold text-[#1E0B42]">Embudo de Conversión</h3>
+                        <p class="text-slate-400 text-xs uppercase tracking-widest font-bold">Rendimiento mensual del funnel</p>
+                    </div>
+                </div>
+                ${renderFunnel()}
+            </section>
+
+            <!-- 3. GRÁFICOS PRINCIPALES -->
             <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div class="lg:col-span-2 bg-[#1E0B42] p-8 rounded-[3rem] text-white shadow-2xl shadow-violet-900/40 relative overflow-hidden">
                     <div class="relative z-10">
@@ -295,28 +279,32 @@ function renderDashboard() {
                 </div>
             </section>
 
-            <!-- 3. EMBUDO PUBLICITARIO -->
-            <section class="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
-                <div class="flex items-center justify-between mb-10">
-                    <div>
-                        <h3 class="text-xl font-bold text-[#1E0B42]">Embudo de Conversión</h3>
-                        <p class="text-slate-400 text-xs uppercase tracking-widest font-bold">Rendimiento mensual del funnel</p>
-                    </div>
-                </div>
-                ${renderFunnel()}
-            </section>
-
-            <!-- 4. COMPARATIVA DIARIA Y COSTOS -->
-            <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 4. COMPARATIVA DIARIA -->
+            <section class="w-full">
                 <div class="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
                     <h3 class="text-xl font-bold text-[#1E0B42] mb-1">Resultados Diarios</h3>
                     <p class="text-slate-400 text-xs mb-8">Diferenciación de Mensajes y Leads</p>
                     <div class="h-[300px] w-full"><canvas id="barChart"></canvas></div>
                 </div>
-                <div class="bg-[#1E0B42] p-8 rounded-[3rem] text-white shadow-xl shadow-violet-900/10">
-                    <h3 class="text-xl font-bold mb-1">Tendencia de Costos</h3>
-                    <p class="text-violet-300/60 text-xs mb-8">Seguimiento de costos segmentados por objetivo</p>
-                    <div class="h-[300px] w-full"><canvas id="costChart"></canvas></div>
+            </section>
+
+            <!-- 5. KPIS SECUNDARIOS Y COSTOS DE EFICIENCIA -->
+            <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Costo/Mensaje Hoy</p>
+                    <h4 class="text-2xl font-black text-orange-500 text-loading">...</h4>
+                </div>
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Costo/Lead Hoy</p>
+                    <h4 class="text-2xl font-black text-blue-500 text-loading">...</h4>
+                </div>
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">CTR Promedio Hoy</p>
+                    <h4 class="text-2xl font-black text-slate-800 text-loading">...</h4>
+                </div>
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                    <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">CPM Promedio Hoy</p>
+                    <h4 class="text-2xl font-black text-slate-800 text-loading">...</h4>
                 </div>
             </section>
         </div>
@@ -443,22 +431,7 @@ function initCharts() {
         });
     }
 
-    // 3. Cost Chart
-    const ctxCost = document.getElementById('costChart');
-    if (ctxCost) {
-        if (charts.cost) charts.cost.destroy();
-        charts.cost = new Chart(ctxCost, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: 'Costo/Msg', data: series.map(s => s.cost_per_message > 0 ? s.cost_per_message : null), borderColor: '#F97316', tension: 0.4, borderWidth: 2, pointRadius: 0 },
-                    { label: 'Costo/Lead', data: series.map(s => s.cost_per_lead > 0 ? s.cost_per_lead : null), borderColor: '#3B82F6', tension: 0.4, borderWidth: 2, pointRadius: 0 }
-                ]
-            },
-            options: { maintainAspectRatio: false, plugins: { legend: { labels: { color: '#fff' } } }, scales: { y: { ticks: { color: 'rgba(255,255,255,0.5)', callback: v => 'S/.' + v } }, x: { ticks: { color: 'rgba(255,255,255,0.5)' } } } }
-        });
-    }
+
 
     // 4. Budget Doughnut
     const ctxDoughnut = document.getElementById('doughnutChart');
