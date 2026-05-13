@@ -206,19 +206,42 @@ function renderDashboard() {
         <div class="space-y-8 animate-in fade-in duration-500">
             <!-- 1. KPI CARDS HOY -->
             <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 bg-violet-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-violet-600/30">
+                            <i data-lucide="zap" class="w-6 h-6"></i>
+                        </div>
+                        <span class="bg-violet-100 text-violet-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase">Actual</span>
+                    </div>
                     <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Inversión Hoy</p>
                     <h4 class="text-2xl font-black text-[#1E0B42] text-loading">...</h4>
                 </div>
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-orange-500/30">
+                            <i data-lucide="users" class="w-6 h-6"></i>
+                        </div>
+                        <span class="bg-orange-100 text-orange-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase">Live</span>
+                    </div>
                     <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Mensajes Hoy</p>
                     <h4 class="text-2xl font-black text-[#1E0B42] text-loading">...</h4>
                 </div>
-                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm relative">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 bg-rose-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-rose-500/30">
+                            <i data-lucide="target" class="w-6 h-6"></i>
+                        </div>
+                        <span class="bg-rose-100 text-rose-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase">Live</span>
+                    </div>
                     <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Leads Hoy</p>
                     <h4 class="text-2xl font-black text-[#1E0B42] text-loading">...</h4>
                 </div>
-                <div class="bg-[#1E0B42] p-6 rounded-[2.5rem] shadow-xl shadow-violet-900/20">
+                <div class="bg-[#1E0B42] p-6 rounded-[2.5rem] shadow-xl shadow-violet-900/20 relative">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-violet-300">
+                            <i data-lucide="wallet" class="w-6 h-6"></i>
+                        </div>
+                    </div>
                     <p class="text-violet-300/50 text-[10px] font-bold uppercase tracking-widest mb-1">Presupuesto Disponible</p>
                     <h4 class="text-2xl font-black text-white">${formatCurrency(available)}</h4>
                 </div>
@@ -313,11 +336,14 @@ function renderFunnel() {
     const reach = safeNumber(kpi.reachTotal);
     const clicks = safeNumber(kpi.clicksTotal);
     const visits = safeNumber(kpi.visitsTotal);
+    const messages = safeNumber(kpi.mensajesTotales);
     const leads = safeNumber(kpi.leadsTotales);
+    
+    const contactos = messages + leads;
     
     const ctr = reach > 0 ? ((clicks / reach) * 100).toFixed(2) : '0.00';
     const clicksToVisits = clicks > 0 ? ((visits / clicks) * 100).toFixed(2) : '0.00';
-    const visitsToLeads = visits > 0 ? ((leads / visits) * 100).toFixed(2) : '0.00';
+    const visitsToContacts = visits > 0 ? ((contactos / visits) * 100).toFixed(2) : '0.00';
     
     const spent = safeNumber(kpi.gastoTotal);
     const cpc = clicks > 0 ? (spent / clicks) : 0;
@@ -343,12 +369,13 @@ function renderFunnel() {
                     <div class="funnel-stage stage-visits">
                         <p class="funnel-label text-orange-700/60">Visitas a la página</p>
                         <p class="funnel-value text-[#1E0B42]">${visits.toLocaleString()}</p>
-                        <div class="conversion-tag text-orange-600">${visitsToLeads}% Conv.</div>
+                        <div class="conversion-tag text-orange-600">${visitsToContacts}% Conv.</div>
                     </div>
-                    <!-- Stage 4: Leads -->
-                    <div class="funnel-stage stage-leads">
-                        <p class="funnel-label text-white/80">Leads Finales</p>
-                        <p class="funnel-value text-white">${leads.toLocaleString()}</p>
+                    <!-- Stage 4: Contactos -->
+                    <div class="funnel-stage stage-contacts">
+                        <p class="funnel-label text-white/80">Contactos generados</p>
+                        <p class="funnel-value text-white mb-1">${contactos.toLocaleString()}</p>
+                        <p class="text-[10px] sm:text-xs text-white/70 font-bold tracking-widest max-w-[85%] mx-auto text-center leading-tight">${messages.toLocaleString()} mensajes<br class="md:hidden"> + ${leads.toLocaleString()} leads</p>
                     </div>
                 </div>
             </div>

@@ -106,7 +106,7 @@
     margin-top: -20px;
 }
 
-.stage-leads {
+.stage-contacts {
     width: 100%;
     background: #FB923C;
     clip-path: polygon(35% 0, 65% 0, 60% 100%, 40% 100%);
@@ -125,7 +125,7 @@
     margin-bottom: 0.25rem;
 }
 
-.stage-leads .funnel-label {
+.stage-contacts .funnel-label {
     opacity: 0.9;
 }
 
@@ -150,7 +150,21 @@
     z-index: 20;
 }
 
-.stage-leads .funnel-value {
+.stage-contacts .funnel-value {
     font-size: 2.5rem;
     text-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+/* Mobile responsive funnel paths to prevent text cutoff */
+@media (max-width: 768px) {
+    .stage-reach { clip-path: polygon(0 0, 100% 0, 90% 100%, 10% 100%); }
+    .stage-clicks { clip-path: polygon(10% 0, 90% 0, 80% 100%, 20% 100%); }
+    .stage-visits { clip-path: polygon(20% 0, 80% 0, 75% 100%, 25% 100%); }
+    .stage-contacts { 
+        clip-path: polygon(25% 0, 75% 0, 75% 100%, 25% 100%); 
+        padding: 3rem 1rem 4rem 1rem;
+    }
+    .funnel-label { font-size: 0.55rem; }
+    .funnel-value { font-size: 1.75rem; }
+    .stage-contacts .funnel-value { font-size: 2rem; }
 }
