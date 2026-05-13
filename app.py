@@ -18,7 +18,7 @@ app = Flask(__name__)
 ACCESS_TOKEN = os.environ.get('META_ACCESS_TOKEN')
 AD_ACCOUNT_ID = os.environ.get('AD_ACCOUNT_ID', 'act_1184698167137626')
 MONTHLY_BUDGET = float(os.environ.get('MONTHLY_BUDGET', 2000))
-CLIENT_NAME = os.environ.get('CLIENT_NAME', 'ALUCINANDO DASHBOARD')
+CLIENT_NAME = os.environ.get('CLIENT_NAME', 'FLOTA DASHBOARD')
 CURRENCY = os.environ.get('CURRENCY', 'PEN')
 
 PERU_TZ = pytz.timezone('America/Lima')
@@ -148,6 +148,7 @@ def get_dashboard_data():
             leads = get_action_value(actions, lead_actions)
             messages = get_action_value(actions, msg_actions)
             thruplays = get_action_value(actions, thruplay_actions)
+            visits = get_action_value(actions, ['landing_page_view', 'onsite_conversion.landing_page_view'])
             
             # Revisar si thruplay viene como campo separado (frecuente en v19.0+)
             if 'video_thruplay_watched_actions' in entry:
@@ -160,7 +161,7 @@ def get_dashboard_data():
             if ds not in daily_map:
                 daily_map[ds] = {
                     "date": ds,
-                    "messages": 0, "leads": 0,
+                    "messages": 0, "leads": 0, "visits": 0,
                     "msg_spend": 0.0, "lead_spend": 0.0,
                     "total_spend": 0.0, "reach": 0, "clicks": 0, "impressions": 0, "interactions": 0
                 }
@@ -170,6 +171,7 @@ def get_dashboard_data():
             d["reach"] += reach
             d["clicks"] += clicks
             d["impressions"] += impressions
+            d["visits"] += visits
             d["interactions"] += sum(int(a.get('value', 0)) for a in actions)
             
             if stage == 'Mensajes':
@@ -230,6 +232,7 @@ def get_dashboard_data():
                 "cost_per_lead": round(d["lead_spend"] / d["leads"], 2) if d["leads"] > 0 else 0,
                 "reach": d["reach"],
                 "clicks": d["clicks"],
+                "visits": d["visits"],
                 "interactions": d["interactions"]
             })
 
@@ -239,6 +242,7 @@ def get_dashboard_data():
         total_m_leads = sum(d["leads"] for d in daily_series)
         total_m_reach = sum(d["reach"] for d in daily_series)
         total_m_clicks = sum(d["clicks"] for d in daily_series)
+        total_m_visits = sum(d["visits"] for d in daily_series)
         total_m_interactions = sum(d["interactions"] for d in daily_series)
         
         # Campañas Procesadas
@@ -266,6 +270,7 @@ def get_dashboard_data():
                 "mensajesTotales": total_m_messages,
                 "reachTotal": total_m_reach,
                 "clicksTotal": total_m_clicks,
+                "visitsTotal": total_m_visits,
                 "interactionsTotal": total_m_interactions,
                 "presupuestoTotal": MONTHLY_BUDGET,
                 "presupuestoRestante": round(max(0, MONTHLY_BUDGET - total_m_spend), 2),

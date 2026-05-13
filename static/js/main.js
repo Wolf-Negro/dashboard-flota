@@ -312,37 +312,65 @@ function renderFunnel() {
     const kpi = apiData.kpis || {};
     const reach = safeNumber(kpi.reachTotal);
     const clicks = safeNumber(kpi.clicksTotal);
-    const interactions = safeNumber(kpi.interactionsTotal);
-    const messages = safeNumber(kpi.mensajesTotales);
+    const visits = safeNumber(kpi.visitsTotal);
     const leads = safeNumber(kpi.leadsTotales);
+    
     const ctr = reach > 0 ? ((clicks / reach) * 100).toFixed(2) : '0.00';
+    const clicksToVisits = clicks > 0 ? ((visits / clicks) * 100).toFixed(2) : '0.00';
+    const visitsToLeads = visits > 0 ? ((leads / visits) * 100).toFixed(2) : '0.00';
+    
+    const spent = safeNumber(kpi.gastoTotal);
+    const cpc = clicks > 0 ? (spent / clicks) : 0;
+    const cpl = leads > 0 ? (spent / leads) : 0;
 
     return `
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center">
-            <div class="bg-slate-50 p-6 rounded-3xl text-center">
-                <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Alcance</p>
-                <p class="text-2xl font-black text-[#1E0B42]">${reach.toLocaleString()}</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-12 items-center">
+            <div class="md:col-span-2">
+                <div class="funnel-container">
+                    <!-- Stage 1: Alcance -->
+                    <div class="funnel-stage stage-reach">
+                        <p class="funnel-label text-slate-500">Alcance (Reach)</p>
+                        <p class="funnel-value text-[#1E0B42]">${reach.toLocaleString()}</p>
+                        <div class="conversion-tag text-slate-500">${ctr}% CTR</div>
+                    </div>
+                    <!-- Stage 2: Clics -->
+                    <div class="funnel-stage stage-clicks">
+                        <p class="funnel-label text-orange-600/60">Clics en el enlace</p>
+                        <p class="funnel-value text-[#1E0B42]">${clicks.toLocaleString()}</p>
+                        <div class="conversion-tag text-orange-500">${clicksToVisits}% Conv.</div>
+                    </div>
+                    <!-- Stage 3: Visitas -->
+                    <div class="funnel-stage stage-visits">
+                        <p class="funnel-label text-orange-700/60">Visitas a la página</p>
+                        <p class="funnel-value text-[#1E0B42]">${visits.toLocaleString()}</p>
+                        <div class="conversion-tag text-orange-600">${visitsToLeads}% Conv.</div>
+                    </div>
+                    <!-- Stage 4: Leads -->
+                    <div class="funnel-stage stage-leads">
+                        <p class="funnel-label text-white/80">Leads Finales</p>
+                        <p class="funnel-value text-white">${leads.toLocaleString()}</p>
+                    </div>
+                </div>
             </div>
-            <div class="hidden lg:flex justify-center text-slate-200"><i data-lucide="chevron-right"></i></div>
-            <div class="bg-violet-50 p-6 rounded-3xl text-center">
-                <p class="text-[10px] font-bold text-violet-400 uppercase mb-2">Clics</p>
-                <p class="text-2xl font-black text-[#1E0B42]">${clicks.toLocaleString()}</p>
-                <p class="text-[10px] font-bold text-violet-500 mt-1">${ctr}% CTR</p>
-            </div>
-            <div class="hidden lg:flex justify-center text-slate-200"><i data-lucide="chevron-right"></i></div>
-            <div class="bg-orange-50 p-6 rounded-3xl text-center">
-                <p class="text-[10px] font-bold text-orange-400 uppercase mb-2">Interacciones</p>
-                <p class="text-2xl font-black text-[#1E0B42]">${interactions.toLocaleString()}</p>
-            </div>
-            <div class="hidden lg:flex justify-center text-slate-200"><i data-lucide="chevron-right"></i></div>
-            <div class="bg-amber-50 p-6 rounded-3xl text-center border-2 border-amber-100">
-                <p class="text-[10px] font-bold text-amber-500 uppercase mb-2">Mensajes</p>
-                <p class="text-2xl font-black text-[#1E0B42]">${messages.toLocaleString()}</p>
-            </div>
-            <div class="hidden lg:flex justify-center text-slate-200"><i data-lucide="chevron-right"></i></div>
-            <div class="bg-[#1E0B42] p-6 rounded-3xl text-center shadow-lg shadow-violet-900/20">
-                <p class="text-[10px] font-bold text-violet-300/50 uppercase mb-2">Leads</p>
-                <p class="text-2xl font-black text-white">${leads.toLocaleString()}</p>
+            <div class="space-y-6">
+                <!-- COSTO POR CLIC -->
+                <div class="p-8 bg-violet-50/80 rounded-[2.5rem] border border-violet-100 relative group overflow-hidden">
+                    <div class="absolute top-0 right-0 p-6 opacity-20 text-violet-400 group-hover:scale-110 transition-transform">
+                        <i data-lucide="mouse-pointer-click" class="w-12 h-12"></i>
+                    </div>
+                    <p class="text-[10px] font-bold text-violet-400 uppercase tracking-widest mb-3">Costo por Clic Promedio</p>
+                    <h4 class="text-4xl font-black text-[#1E0B42] mb-1">${formatCurrency(cpc)}</h4>
+                    <p class="text-[10px] text-slate-400 font-medium">Inversión por cada clic generado</p>
+                </div>
+                <!-- COSTO POR LEAD -->
+                <div class="p-8 bg-[#1E0B42] rounded-[2.5rem] relative group overflow-hidden shadow-xl shadow-violet-900/20">
+                    <div class="absolute top-0 right-0 p-6 opacity-20 text-violet-300 group-hover:scale-110 transition-transform">
+                        <i data-lucide="user-check" class="w-12 h-12"></i>
+                    </div>
+                    <p class="text-[10px] font-bold text-violet-300/60 uppercase tracking-widest mb-3">Costo por Lead Promedio</p>
+                    <h4 class="text-4xl font-black text-white mb-1">${formatCurrency(cpl)}</h4>
+                    <p class="text-[10px] text-violet-300/40 font-medium">Eficiencia de captación mensual</p>
+                </div>
             </div>
         </div>
     `;
