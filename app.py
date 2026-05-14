@@ -72,7 +72,10 @@ def classify_campaign(name, action_types):
     return 'Posicionamiento'
 
 def get_action_value(actions, types):
-    return sum(int(a.get('value', 0)) for a in actions if a.get('action_type') in types)
+    # Meta often reports the same conversion under different action_type names.
+    # We take the maximum value found among the requested types to avoid double counting.
+    values = [int(a.get('value', 0)) for a in actions if a.get('action_type') in types]
+    return max(values) if values else 0
 
 @app.route('/')
 def index():
@@ -353,6 +356,201 @@ def get_today_metrics():
         })
     except:
         return jsonify({"status": "error"})
+
+# Global cache for pipeline data
+pipeline_cache = {
+    "data": None,
+    "timestamp": 0
+}
+CACHE_DURATION = 300 # 5 minutes
+
+@app.route('/api/pipeline')
+def get_pipeline_data():
+    global pipeline_cache
+    
+    # Check cache
+    now = time.time()
+    if pipeline_cache["data"] and (now - pipeline_cache["timestamp"]) < CACHE_DURATION:
+        return jsonify(pipeline_cache["data"])
+
+    ghl_token = os.environ.get('GHL_PRIVATE_TOKEN')
+    ghl_location = os.environ.get('GHL_LOCATION_ID')
+    ghl_version = os.environ.get('GHL_API_VERSION', '2021-07-28')
+
+    if not ghl_token or not ghl_location:
+        return jsonify({"status": "error", "message": "GHL credentials not found"})
+
+    headers = {
+        "Authorization": f"Bearer {ghl_token}",
+        "Version": ghl_version,
+        "Accept": "application/json"
+    }
+
+    try:
+        pip_url = f"https://services.leadconnectorhq.com/opportunities/pipelines?locationId={ghl_location}"
+        res_pip = requests.get(pip_url, headers=headers).json()
+        pipelines = res_pip.get('pipelines', [])
+        
+        if not pipelines:
+            return jsonify({"status": "error", "message": "No pipelines found"})
+            
+        # Target the main pipeline for the stats structure
+        main_pipeline = next((p for p in pipelines if p['id'] == 'U6LW97fklCl7u6AZUytf'), pipelines[0])
+        
+        # Build a global map of ALL stages from ALL pipelines to avoid "Otro"
+        full_stage_map = {}
+        for p in pipelines:
+            for s in p.get('stages', []):
+                full_stage_map[s.get('id')] = s.get('name')
+        
+        # We'll use these specific names for the dashboard order/structure
+        main_stage_names = [s.get('name') for s in main_pipeline.get('stages', [])]
+        
+        # 3. Parallel Stage Fetching for Speed and Accuracy
+        pipeline_stats = {name: 0 for name in main_stage_names}
+        all_processed_today = []
+        new_leads_today = 0
+        scheduled_leads = 0
+        won_leads = 0
+        lost_leads = 0
+        
+        PERU_TZ = pytz.timezone('America/Lima')
+        now_peru = datetime.now(PERU_TZ)
+        today_str = now_peru.strftime('%Y-%m-%d')
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        def fetch_stage_data(stage_info):
+            stage_id, stage_name = stage_info
+            if stage_name not in pipeline_stats:
+                return []
+                
+            found_today = []
+            next_page_url = f"https://services.leadconnectorhq.com/opportunities/search?location_id={ghl_location}&pipeline_stage_id={stage_id}&limit=100&status=open"
+            
+            # Fetch up to 10 pages for high-priority stages, fewer for others
+            max_pages = 10 if ('cita' in stage_name.lower() or 'agendo' in stage_name.lower() or 'registro' in stage_name.lower()) else 3
+            
+            for _ in range(max_pages):
+                try:
+                    resp = requests.get(next_page_url, headers=headers, timeout=10)
+                    if resp.status_code != 200: break
+                    data = resp.json()
+                    opps = data.get('opportunities', [])
+                    if not opps: break
+                    
+                    for opp in opps:
+                        dates = [opp.get('createdAt'), opp.get('updatedAt'), opp.get('lastStageChangeAt')]
+                        is_today = False
+                        for d in dates:
+                            if d and d[:10] == today_str:
+                                is_today = True
+                                break
+                            if d:
+                                try:
+                                    dt = datetime.strptime(d[:19], "%Y-%m-%dT%H:%M:%S")
+                                    dt_peru = pytz.utc.localize(dt).astimezone(PERU_TZ)
+                                    if dt_peru.strftime('%Y-%m-%d') == today_str:
+                                        is_today = True
+                                        break
+                                except: pass
+                        
+                        if is_today:
+                            found_today.append({
+                                "id": opp.get('id'),
+                                "name": opp.get('name', 'N/A'),
+                                "phone": opp.get('phone', 'N/A'),
+                                "stage": stage_name,
+                                "status": "open",
+                                "source": opp.get('source', 'N/A'),
+                                "assignedTo": opp.get('assignedTo', 'Sin Asignar'),
+                                "createdAt": opp.get('createdAt'),
+                                "updatedAt": opp.get('updatedAt')
+                            })
+                    
+                    next_page_url = data.get('meta', {}).get('nextPageUrl')
+                    if not next_page_url: break
+                except Exception as e:
+                    print(f"Error fetching stage {stage_name}: {e}")
+                    break
+            return found_today
+
+        # Execute parallel fetches
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            results = list(executor.map(fetch_stage_data, full_stage_map.items()))
+            
+        for stage_leads in results:
+            for lead in stage_leads:
+                all_processed_today.append(lead)
+                stage_name = lead['stage']
+                pipeline_stats[stage_name] += 1
+                if 'cita' in stage_name.lower() or 'agendo' in stage_name.lower():
+                    scheduled_leads += 1
+                if lead['createdAt'] and lead['createdAt'][:10] == today_str:
+                    new_leads_today += 1
+
+        # 4. Global fetch for daily metrics (Won, Lost, and NEW Leads)
+        # This ensures "Leads Hoy" counts EVERY lead created today, even if not in the main stages
+        try:
+            res_global = requests.get(f"https://services.leadconnectorhq.com/opportunities/search?location_id={ghl_location}&limit=100&order=updated_desc&status=all", headers=headers, timeout=10).json()
+            
+            # Reset global counters to use the broad search results
+            won_leads = 0
+            lost_leads = 0
+            new_leads_today_global = 0
+            
+            for opp in res_global.get('opportunities', []):
+                created_at_raw = opp.get('createdAt', '')
+                updated_at_raw = opp.get('updatedAt', '')
+                status = opp.get('status', 'open')
+                
+                # Check for creation today (Global Leads Hoy)
+                if created_at_raw and created_at_raw[:10] == today_str:
+                    new_leads_today_global += 1
+                
+                # Check for updates today (Won/Lost)
+                if updated_at_raw and updated_at_raw[:10] == today_str:
+                    if status == 'won': won_leads += 1
+                    if status == 'lost': lost_leads += 1
+            
+            # Use the global count if it's higher than the stage-specific count
+            new_leads_today = max(new_leads_today, new_leads_today_global)
+        except: pass
+
+        # Deduplicate and sort
+        seen_ids = set()
+        final_list = []
+        for o in all_processed_today:
+            if o['id'] not in seen_ids:
+                final_list.append(o)
+                seen_ids.add(o['id'])
+        
+        final_list.sort(key=lambda x: x['updatedAt'], reverse=True)
+
+        response_data = {
+            "status": "success",
+            "data": {
+                "totalActive": sum(pipeline_stats.values()),
+                "newToday": new_leads_today,
+                "scheduled": scheduled_leads,
+                "won": won_leads,
+                "lost": lost_leads,
+                "stages": [{"name": k, "count": v} for k, v in pipeline_stats.items()],
+                "opportunities": final_list
+            }
+        }
+        
+        # Update cache
+        pipeline_cache = {
+            "data": response_data,
+            "timestamp": time.time()
+        }
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        print(f"Error en get_pipeline_data: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

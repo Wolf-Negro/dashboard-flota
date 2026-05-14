@@ -1,6 +1,7 @@
 let currentSection = 'dashboard';
 let apiData = null;
 let todayData = null; // Persistencia de métricas de hoy
+let pipelineData = null; // Persistencia de datos del pipeline
 let charts = {};
 
 // --- UTILS ---
@@ -38,7 +39,7 @@ function generateMonthOptions() {
     const currentYear = nowParts[0];
     const currentMonthNum = parseInt(nowParts[1]);
     const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    
+
     monthFilter.innerHTML = '';
     for (let i = 0; i < currentMonthNum; i++) {
         const monthVal = (i + 1).toString().padStart(2, '0');
@@ -80,7 +81,7 @@ async function fetchData(month = '') {
 async function syncWithServer(month, isCurrentMonth) {
     try {
         if (!apiData) contentArea.innerHTML = '<div class="flex flex-col items-center justify-center min-h-[50vh]"><div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-violet-500 mb-4"></div><p class="text-slate-500 font-medium">Sincronizando con Meta Ads...</p></div>';
-        
+
         const url = `/api/data?month=${month}`;
         const response = await fetch(url);
         const result = await response.json();
@@ -176,22 +177,58 @@ function switchSection(section) {
             btn.classList.add('text-violet-200/60', 'hover:bg-white/5');
         }
     });
-    const titles = { 'dashboard': 'Dashboard General', 'metrics': 'Métricas Diarias', 'campaigns': 'Análisis de Campañas', 'leads': 'Leads & Mensajes' };
-    if (pageTitle) pageTitle.textContent = titles[section] || 'Dashboard';
+    const titles = { 'dashboard': 'Dashboard General', 'metrics': 'Métricas Diarias', 'campaigns': 'Análisis de Campañas', 'pipeline': 'Proceso de Venta' };
+    const subtitles = { 'dashboard': 'Visualización en tiempo real de Meta Ads', 'pipeline': 'Estado actual de los leads dentro del proceso comercial' };
+
+    if (pageTitle) {
+        pageTitle.textContent = titles[section] || 'Dashboard';
+        const subtitleEl = pageTitle.nextElementSibling;
+        if (subtitleEl && subtitleEl.tagName === 'P') {
+            subtitleEl.textContent = subtitles[section] || 'Métricas y resultados';
+        }
+    }
     renderCurrentSection();
 }
 
 function renderCurrentSection() {
-    if (!apiData) return;
+    if (!apiData && currentSection !== 'pipeline') return;
     try {
         if (currentSection === 'dashboard') renderDashboard();
         else if (currentSection === 'metrics') renderMetricsTable();
         else if (currentSection === 'campaigns') renderCampaignsTable();
-        else if (currentSection === 'leads') renderLeadsAndMessages();
+        else if (currentSection === 'pipeline') renderPipelineWrapper();
         lucide.createIcons();
     } catch (err) {
         console.error("Render Error:", err);
         renderError("Error al dibujar la interfaz: " + err.message);
+    }
+}
+
+async function fetchPipelineData() {
+    try {
+        const response = await fetch('/api/pipeline');
+        const result = await response.json();
+        if (result.status === 'success') {
+            pipelineData = result.data;
+            if (currentSection === 'pipeline') {
+                renderPipeline();
+            }
+        } else {
+            if (currentSection === 'pipeline') {
+                contentArea.innerHTML = `<p class="text-red-500 font-bold p-8">Error obteniendo Pipeline: ${result.message}</p>`;
+            }
+        }
+    } catch (err) {
+        console.error("Pipeline Fetch Error:", err);
+    }
+}
+
+function renderPipelineWrapper() {
+    if (pipelineData) {
+        renderPipeline();
+    } else {
+        contentArea.innerHTML = '<div class="flex flex-col items-center justify-center min-h-[50vh]"><div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-violet-500 mb-4"></div><p class="text-slate-500 font-medium">Conectando con GoHighLevel...</p></div>';
+        fetchPipelineData();
     }
 }
 
@@ -310,7 +347,7 @@ function renderDashboard() {
         </div>
     `;
     initCharts();
-    
+
     // Si ya tenemos la data de hoy, aplicarla de inmediato al volver a la pestaña
     if (todayData) {
         updateHoyUIMetrics(todayData);
@@ -326,13 +363,13 @@ function renderFunnel() {
     const visits = safeNumber(kpi.visitsTotal);
     const messages = safeNumber(kpi.mensajesTotales);
     const leads = safeNumber(kpi.leadsTotales);
-    
+
     const contactos = messages + leads;
-    
+
     const ctr = reach > 0 ? ((clicks / reach) * 100).toFixed(2) : '0.00';
     const clicksToVisits = clicks > 0 ? ((visits / clicks) * 100).toFixed(2) : '0.00';
     const visitsToContacts = visits > 0 ? ((contactos / visits) * 100).toFixed(2) : '0.00';
-    
+
     const spent = safeNumber(kpi.gastoTotal);
     const cpc = clicks > 0 ? (spent / clicks) : 0;
     const cpl = leads > 0 ? (spent / leads) : 0;
@@ -526,26 +563,104 @@ function renderCampaignsTable() {
     `;
 }
 
-function renderLeadsAndMessages() {
-    const kpi = apiData.kpis || {};
+function renderPipeline() {
+    if (!pipelineData) return;
+    const { totalActive, newToday, scheduled, won, lost, stages, opportunities } = pipelineData;
+
+    // Colores para el embudo visual
+    const colors = ['bg-orange-500', 'bg-blue-500', 'bg-violet-500', 'bg-fuchsia-500', 'bg-rose-500', 'bg-emerald-500'];
+
     contentArea.innerHTML = `
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-bottom-4 duration-500">
-            <div class="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-sm">
-                <h3 class="text-2xl font-bold text-[#1E0B42] mb-10 flex items-center gap-3"><span class="w-3 h-3 bg-orange-500 rounded-full"></span> Mensajes (WhatsApp)</h3>
-                <div class="space-y-6">
-                    <div class="flex justify-between items-end"><p class="text-slate-400 font-bold uppercase text-xs">Total Mensajes</p><p class="text-4xl font-black text-[#1E0B42]">${kpi.mensajesTotales.toLocaleString()}</p></div>
-                    <div class="flex justify-between items-end"><p class="text-slate-400 font-bold uppercase text-xs">Inversión Canal</p><p class="text-2xl font-black text-slate-700">${formatCurrency(kpi.costoPorMensaje * kpi.mensajesTotales)}</p></div>
-                    <div class="bg-orange-50 p-6 rounded-3xl mt-10"><p class="text-orange-400 font-bold uppercase text-[10px] mb-1">Costo Eficiente por Mensaje</p><p class="text-4xl font-black text-orange-600">${formatCurrency(kpi.costoPorMensaje)}</p></div>
+        <!-- 1. Cards Superiores -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 animate-in slide-in-from-bottom-4 duration-500">
+            <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Oportunidades de Hoy</p>
+                <h4 class="text-4xl font-black text-[#1E0B42]">${totalActive}</h4>
+            </div>
+            <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-center relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-24 h-24 bg-orange-500/10 rounded-bl-full -mr-4 -mt-4"></div>
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2 relative z-10">Leads Nuevos Hoy</p>
+                <h4 class="text-4xl font-black text-orange-500 relative z-10">+${newToday}</h4>
+            </div>
+            <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col justify-center">
+                <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Citas Agendadas Hoy</p>
+                <h4 class="text-4xl font-black text-blue-500">${scheduled}</h4>
+            </div>
+            <div class="bg-[#1E0B42] p-8 rounded-[2.5rem] shadow-xl text-white flex flex-col justify-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-br from-violet-600/20 to-transparent"></div>
+                <p class="text-violet-300/60 text-[10px] font-bold uppercase tracking-widest mb-2 relative z-10">Ganados Hoy</p>
+                <h4 class="text-4xl font-black text-emerald-400 relative z-10">${won}</h4>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- 2. Embudo Visual -->
+            <div class="lg:col-span-1 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm animate-in slide-in-from-bottom-6 duration-700">
+                <h3 class="text-xl font-bold text-[#1E0B42] mb-1">Distribución de Hoy</h3>
+                <p class="text-slate-400 text-xs mb-8">Volumen de prospectos ingresados hoy</p>
+                <div class="space-y-4">
+                    ${stages.map((stage, i) => {
+        const pct = totalActive > 0 ? Math.round((stage.count / totalActive) * 100) : 0;
+        const colorClass = colors[i % colors.length];
+        return `
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="font-bold text-slate-700">${stage.name}</span>
+                                    <span class="font-black text-[#1E0B42]">${stage.count} <span class="text-slate-400 font-medium text-xs ml-1">(${pct}%)</span></span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                                    <div class="${colorClass} h-3 rounded-full transition-all duration-1000" style="width: ${pct}%"></div>
+                                </div>
+                            </div>
+                        `;
+    }).join('')}
                 </div>
             </div>
-            <div class="bg-[#1E0B42] p-10 rounded-[3rem] text-white shadow-2xl shadow-violet-900/20">
-                <h3 class="text-2xl font-bold mb-10 flex items-center gap-3"><span class="w-3 h-3 bg-blue-500 rounded-full"></span> Leads (Clientes Potenciales)</h3>
-                <div class="space-y-6">
-                    <div class="flex justify-between items-end"><p class="text-violet-300/50 font-bold uppercase text-xs">Total Leads</p><p class="text-4xl font-black text-white">${kpi.leadsTotales.toLocaleString()}</p></div>
-                    <div class="flex justify-between items-end"><p class="text-violet-300/50 font-bold uppercase text-xs">Inversión Canal</p><p class="text-2xl font-black text-violet-200">${formatCurrency(kpi.costoPorLead * kpi.leadsTotales)}</p></div>
-                    <div class="bg-white/5 p-6 rounded-3xl mt-10 border border-white/10"><p class="text-violet-300 font-bold uppercase text-[10px] mb-1">Costo Eficiente por Lead</p><p class="text-4xl font-black text-white">${formatCurrency(kpi.costoPorLead)}</p></div>
+
+            <!-- 3. Tabla de Gestión -->
+            <div class="lg:col-span-2 bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col animate-in slide-in-from-bottom-8 duration-700">
+                <div class="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-xl font-bold text-[#1E0B42] mb-1">Leads Ingresados Hoy</h3>
+                        <p class="text-slate-400 text-xs">Ordenados del más reciente al más antiguo</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-white border-b border-slate-100">
+                                <th class="py-4 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Lead</th>
+                                <th class="py-4 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Etapa</th>
+                                <th class="py-4 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Estado</th>
+                                <th class="py-4 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Ingreso</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${opportunities.map(opp => {
+        const dateObj = new Date(opp.createdAt);
+        const dateStr = dateObj.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        return `
+                                    <tr class="hover:bg-slate-50/50 transition-colors">
+                                        <td class="py-4 px-8">
+                                            <p class="font-bold text-[#1E0B42] text-sm">${opp.name}</p>
+                                            <p class="text-xs text-slate-400 mt-0.5">${opp.phone}</p>
+                                        </td>
+                                        <td class="py-4 px-8">
+                                            <span class="px-3 py-1 bg-violet-50 text-violet-700 rounded-lg text-xs font-bold">${opp.stage}</span>
+                                        </td>
+                                        <td class="py-4 px-8">
+                                            <span class="px-3 py-1 ${opp.status === 'open' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'} rounded-lg text-xs font-bold uppercase tracking-wide">${opp.status}</span>
+                                        </td>
+                                        <td class="py-4 px-8 text-xs font-medium text-slate-500">${dateStr}</td>
+                                    </tr>
+                                `;
+    }).join('')}
+                            ${opportunities.length === 0 ? '<tr><td colspan="4" class="py-8 text-center text-slate-400 font-medium">No hay oportunidades en el pipeline</td></tr>' : ''}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     `;
+    lucide.createIcons();
 }

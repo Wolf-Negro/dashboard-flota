@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GHL_TOKEN = os.getenv('GHL_PRIVATE_TOKEN', 'pit-dbbebfb1-584d-403a-bccf-66b8d6e8820e')
+GHL_TOKEN = os.getenv('GHL_PRIVATE_TOKEN')
 GHL_VERSION = os.getenv('GHL_API_VERSION', '2021-07-28')
 
 # Intentamos obtener Location ID por búsqueda si no está en el env
