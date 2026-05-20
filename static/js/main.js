@@ -177,7 +177,7 @@ function switchSection(section) {
             btn.classList.add('text-violet-200/60', 'hover:bg-white/5');
         }
     });
-    const titles = { 'dashboard': 'Dashboard General', 'metrics': 'Métricas Diarias', 'campaigns': 'Análisis de Campañas', 'pipeline': 'Proceso de Venta' };
+    const titles = { 'dashboard': 'Dashboard General', 'metrics': 'Métricas Diarias', 'pipeline': 'Proceso de Venta' };
     const subtitles = { 'dashboard': 'Visualización en tiempo real de Meta Ads', 'pipeline': 'Estado actual de los leads dentro del proceso comercial' };
 
     if (pageTitle) {
@@ -195,7 +195,6 @@ function renderCurrentSection() {
     try {
         if (currentSection === 'dashboard') renderDashboard();
         else if (currentSection === 'metrics') renderMetricsTable();
-        else if (currentSection === 'campaigns') renderCampaignsTable();
         else if (currentSection === 'pipeline') renderPipelineWrapper();
         lucide.createIcons();
     } catch (err) {
@@ -521,47 +520,6 @@ function renderMetricsTable() {
     `;
 }
 
-function renderCampaignsTable() {
-    const campaigns = apiData.campaigns || [];
-    contentArea.innerHTML = `
-        <div class="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
-            <table class="w-full text-left">
-                <thead>
-                    <tr class="bg-slate-50/50">
-                        <th class="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Campaña</th>
-                        <th class="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Etapa</th>
-                        <th class="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Inversión</th>
-                        <th class="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Resultados</th>
-                        <th class="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Costo/Res</th>
-                        <th class="py-6 px-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">CTR</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-50">
-                    ${campaigns.map(c => `
-                        <tr class="hover:bg-slate-50/50 transition-colors">
-                            <td class="py-5 px-8">
-                                <p class="font-bold text-[#1E0B42] text-sm">${c.name}</p>
-                                <p class="text-[10px] text-slate-400 font-bold uppercase">${c.objective}</p>
-                            </td>
-                            <td class="py-5 px-8">
-                                <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase ${c.stage === 'Leads' ? 'bg-blue-50 text-blue-600' : (c.stage === 'Mensajes' ? 'bg-orange-50 text-orange-600' : 'bg-slate-100 text-slate-500')}">
-                                    ${c.stage}
-                                </span>
-                            </td>
-                            <td class="py-5 px-8 font-black text-slate-700">${formatCurrency(c.spend)}</td>
-                            <td class="py-5 px-8">
-                                <p class="font-black text-slate-800">${c.results}</p>
-                                <p class="text-[9px] text-slate-400 uppercase font-bold">${c.result_type}</p>
-                            </td>
-                            <td class="py-5 px-8 font-black text-violet-600">${formatCurrency(c.cost_per_result)}</td>
-                            <td class="py-5 px-8 text-slate-500 font-bold">${c.ctr}%</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
-}
 
 function renderPipeline() {
     if (!pipelineData) return;

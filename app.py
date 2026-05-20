@@ -130,7 +130,6 @@ def get_dashboard_data():
 
         # Procesamiento de Data Diaria
         daily_map = {} # date -> metrics
-        campaign_map = {} # campaign_name -> total_metrics
 
         msg_actions = ['onsite_conversion.messaging_conversation_started_7d', 'messaging_conversation_started_7d', 'messaging_first_reply']
         lead_actions = ['lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'leadgen_grouped']
@@ -184,29 +183,6 @@ def get_dashboard_data():
                 d["leads"] += leads
                 d["lead_spend"] += spend
 
-            # Acumular para Tabla de Campañas
-            if name not in campaign_map:
-                campaign_map[name] = {
-                    "name": name, "objective": entry.get('objective'), "stage": stage,
-                    "spend": 0, "results": 0, "reach": 0, "clicks": 0, "impressions": 0,
-                    "ctr_sum": 0, "cpm_sum": 0, "count": 0
-                }
-            c = campaign_map[name]
-            c["spend"] += spend
-            
-            # Lógica de resultados por etapa
-            if stage == 'Mensajes':
-                c["results"] += messages
-            elif stage == 'Leads':
-                c["results"] += leads
-            else: # Posicionamiento
-                c["results"] += (thruplays if thruplays > 0 else reach)
-            c["reach"] += reach
-            c["clicks"] += clicks
-            c["impressions"] += impressions
-            c["ctr_sum"] += float(entry.get('inline_link_click_ctr', 0))
-            c["cpm_sum"] += float(entry.get('cpm', 0))
-            c["count"] += 1
 
         # Convertir mapa a lista ordenada
         sorted_dates = sorted(daily_map.keys())
@@ -248,21 +224,6 @@ def get_dashboard_data():
         total_m_visits = sum(d["visits"] for d in daily_series)
         total_m_interactions = sum(d["interactions"] for d in daily_series)
         
-        # Campañas Procesadas
-        processed_campaigns = []
-        for name, c in campaign_map.items():
-            processed_campaigns.append({
-                "name": name,
-                "objective": c["objective"],
-                "stage": c["stage"],
-                "spend": round(c["spend"], 2),
-                "results": c["results"],
-                "result_type": c["stage"],
-                "cost_per_result": round(c["spend"] / c["results"], 2) if c["results"] > 0 else 0,
-                "ctr": round(c["ctr_sum"] / c["count"], 2) if c["count"] > 0 else 0,
-                "cpc": round(c["spend"] / c["clicks"], 2) if c["clicks"] > 0 else 0,
-                "cpm": round(c["cpm_sum"] / c["count"], 2) if c["count"] > 0 else 0
-            })
 
         # Endpoint data final
         output = {
@@ -281,7 +242,6 @@ def get_dashboard_data():
                 "costoPorMensaje": round(sum(d["msg_spend"] for d in daily_series) / total_m_messages, 2) if total_m_messages > 0 else 0
             },
             "daily_series": daily_series,
-            "campaigns": sorted(processed_campaigns, key=lambda x: x['spend'], reverse=True),
             "monthDays": ultimo_dia
         }
 
