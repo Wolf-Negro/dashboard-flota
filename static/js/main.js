@@ -177,7 +177,7 @@ function switchSection(section) {
             btn.classList.add('text-violet-200/60', 'hover:bg-white/5');
         }
     });
-    const titles = { 'dashboard': 'Dashboard General', 'metrics': 'Métricas Diarias', 'pipeline': 'Proceso de Venta' };
+    const titles = { 'dashboard': 'Dashboard General', 'metrics': 'Métricas Diarias', 'pipeline': 'Visitas Agendadas' };
     const subtitles = { 'dashboard': 'Visualización en tiempo real de Meta Ads', 'pipeline': 'Estado actual de los leads dentro del proceso comercial' };
 
     if (pageTitle) {
