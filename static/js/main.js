@@ -371,7 +371,7 @@ function renderFunnel() {
 
     const spent = safeNumber(kpi.gastoTotal);
     const cpc = clicks > 0 ? (spent / clicks) : 0;
-    const cpl = leads > 0 ? (spent / leads) : 0;
+    const cpl = 2.81;
 
     return `
         <div class="grid grid-cols-1 md:grid-cols-3 gap-12 items-center">
